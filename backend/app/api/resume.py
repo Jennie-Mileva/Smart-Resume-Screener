@@ -12,6 +12,9 @@ from backend.app.services.pdf_extractor import extract_text_from_pdf
 from backend.app.services.resume_parser import parse_resume
 from backend.app.services.jd_parser import parse_job_description
 from backend.app.services.matcher import match_resume_to_job
+from backend.app.services.llm_matcher import (
+    llm_match_resume_to_job,
+)
 
 
 router = APIRouter(
@@ -247,20 +250,33 @@ async def match_resume(
             resume,
             jd,
         )
+        llm_result = llm_match_resume_to_job(
+            resume,
+            jd,
+        )
 
         # --------------------------------------------------
         # 10. Return result
         # --------------------------------------------------
 
-        return result.model_dump()
+        response = result.model_dump()
+
+        response["llm_match"] = llm_result
+
+        return response
 
     except HTTPException:
         raise
 
     except Exception as exc:
+        print("\n===== LLM/API ERROR =====")
+        print(type(exc).__name__)
+        print(str(exc))
+        print("=========================\n")
+
         raise HTTPException(
             status_code=500,
-            detail="Failed to match resume against job description",
+            detail=str(exc),
         ) from exc
 
     finally:
