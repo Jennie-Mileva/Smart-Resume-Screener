@@ -1,2 +1,5 @@
 fastapi
 uvicorn
+pypdf
+pytest
+python-multipart
