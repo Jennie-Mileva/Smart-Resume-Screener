@@ -86,35 +86,58 @@ JOB DESCRIPTION:
 
 SCORING RUBRIC:
 
+Calculate four separate category scores from 0 to 10.
+
+1. SKILLS — 40%
+Compare the candidate's skills with the required and preferred skills.
+Required skills are more important than preferred skills.
+
+2. EXPERIENCE — 30%
+Compare the candidate's actual experience with the job's experience requirements.
+Do not assume experience that is not explicitly present.
+
+3. EDUCATION — 15%
+Compare the candidate's education with the stated education requirements.
+Do not assume qualifications that are not provided.
+
+4. RESPONSIBILITIES / DOMAIN ALIGNMENT — 15%
+Compare the candidate's experience and projects with the responsibilities
+and technical domain of the job.
+Only use evidence present in the supplied candidate data.
+
+Calculate the final score using:
+
+final_score =
+    (skills_score * 0.40) +
+    (experience_score * 0.30) +
+    (education_score * 0.15) +
+    (responsibilities_score * 0.15)
+
+The final score must be between 0 and 10.
+
+Score guidance:
+
 0-3:
-Very poor match. Major required skills or qualifications are missing.
+Very poor match. Major required qualifications are missing.
 
 4-5:
-Some relevant skills or experience, but significant gaps exist.
+Some relevant qualifications, but significant gaps exist.
 
 6-7:
-Good match. Most important requirements are reasonably satisfied.
+Good match. A substantial portion of the important requirements is satisfied.
 
 8-9:
-Strong match. The candidate satisfies most important requirements
-with relevant experience.
+Strong match. Most important requirements are satisfied with relevant evidence.
 
 10:
-Exceptional match. The candidate satisfies essentially all important
-requirements and is highly aligned with the role.
+Exceptional match. Essentially all important requirements are satisfied.
 
-Consider:
+IMPORTANT:
+- Do not invent qualifications, skills, experience, education, projects, or responsibilities.
+- Base every conclusion only on the supplied candidate and job data.
+- Required skills must not be treated as equivalent to preferred skills.
+- Missing information must not be treated as evidence that the candidate has the qualification.
 
-- Skills: 40%
-- Experience: 30%
-- Education: 15%
-- Responsibilities/domain alignment: 15%
-
-Do not invent qualifications, experience, skills, education, or projects.
-
-Base every conclusion only on the supplied candidate and job data.
-
-Return ONLY valid JSON with this exact structure:
 
 {{
   "score": 0.0,
