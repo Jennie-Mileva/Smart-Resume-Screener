@@ -1,18 +1,22 @@
 from fastapi import FastAPI
 
 from backend.app.api.resume import router as resume_router
+from backend.app.api.candidates import router as candidates_router
 
-app=FastAPI(
+
+app = FastAPI(
     title="Smart Resume Screener",
     description="AI-powered resume screening and job matching system",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.include_router(resume_router)
+app.include_router(candidates_router)
+
 
 @app.get("/api/health")
 def health_check():
-    return{
-        "status" :"healthy",
-        "service":"smart-resume-screener"
+    return {
+        "status": "healthy",
+        "service": "smart-resume-screener",
     }

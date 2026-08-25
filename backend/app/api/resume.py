@@ -6,8 +6,17 @@ from fastapi import (
     UploadFile,
     File,
     HTTPException,
+    Depends,
 )
 
+from sqlalchemy.orm import Session
+
+from backend.app.database import get_db
+from backend.app.services.database_service import (
+    create_candidate,
+    create_resume_profile,
+    get_all_candidates,
+)
 from backend.app.services.pdf_extractor import extract_text_from_pdf
 from backend.app.services.resume_parser import parse_resume
 from backend.app.services.jd_parser import parse_job_description
@@ -29,8 +38,12 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 @router.post("/upload")
 async def upload_resume(
     file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ):
-    """Upload a resume PDF and extract its text."""
+    """
+    Upload a resume PDF, extract and parse its text,
+    then save the candidate and resume profile to SQLite.
+    """
 
     if not file.filename:
         raise HTTPException(
@@ -76,9 +89,42 @@ async def upload_resume(
                 detail="Could not extract readable text from the PDF",
             )
 
+        parsed_resume = parse_resume(
+            extracted_text
+        )
+
+        candidate = create_candidate(
+            db=db,
+            name=parsed_resume.name,
+            email=getattr(
+                parsed_resume,
+                "email",
+                None,
+            ),
+            resume_filename=file.filename,
+            raw_text=extracted_text,
+        )
+
+        create_resume_profile(
+            db=db,
+            candidate_id=candidate.id,
+            skills=parsed_resume.skills,
+            education=[
+                item.model_dump()
+                for item in parsed_resume.education
+            ],
+            experience=[
+                item.model_dump()
+                for item in parsed_resume.experience
+            ],
+        )
+
         return {
-            "filename": file.filename,
-            "text": extracted_text,
+            "id": candidate.id,
+            "filename": candidate.resume_filename,
+            "name": candidate.name,
+            "email": candidate.email,
+            "text": candidate.raw_text,
         }
 
     except HTTPException:
@@ -91,7 +137,34 @@ async def upload_resume(
         ) from exc
 
     finally:
-        temp_file_path.unlink(missing_ok=True)
+        temp_file_path.unlink(
+            missing_ok=True
+        )
+
+
+@router.get("/resumes")
+def get_resumes(
+    db: Session = Depends(get_db),
+):
+    """
+    Return all candidates stored in the database.
+    """
+
+    candidates = get_all_candidates(db)
+
+    return {
+        "count": len(candidates),
+        "candidates": [
+            {
+                "id": candidate.id,
+                "name": candidate.name,
+                "email": candidate.email,
+                "resume_filename": candidate.resume_filename,
+                "created_at": candidate.created_at,
+            }
+            for candidate in candidates
+        ],
+    }
 
 
 @router.post("/match")
@@ -190,7 +263,9 @@ async def match_resume(
                 detail="Could not extract readable text from the PDF",
             )
 
-        resume = parse_resume(resume_text)
+        resume = parse_resume(
+            resume_text
+        )
 
         jd = parse_job_description(
             job_description_text
@@ -201,13 +276,35 @@ async def match_resume(
             jd,
         )
 
-        llm_result = llm_match_resume_to_job(
-            resume,
-            jd,
-        )
-
         response = result.model_dump()
-        response["llm_match"] = llm_result
+
+        try:
+            llm_result = llm_match_resume_to_job(
+                resume,
+                jd,
+            )
+
+            response["llm_match"] = llm_result
+
+        except Exception as exc:
+            print(
+                "\n===== LLM MATCH FALLBACK ====="
+            )
+            print(
+                f"{type(exc).__name__}: {exc}"
+            )
+            print(
+                "Using deterministic matcher result."
+            )
+            print(
+                "==============================\n"
+            )
+
+            response["llm_match"] = {
+                "available": False,
+                "fallback": True,
+                "reason": "LLM service unavailable",
+            }
 
         return response
 
@@ -243,19 +340,11 @@ async def screen_resumes(
     classified, and sorted by score.
     """
 
-    # --------------------------------------------------
-    # 1. Validate resumes
-    # --------------------------------------------------
-
     if not resume_files:
         raise HTTPException(
             status_code=400,
             detail="At least one resume is required",
         )
-
-    # --------------------------------------------------
-    # 2. Validate JD
-    # --------------------------------------------------
 
     if not job_description_file.filename:
         raise HTTPException(
@@ -300,17 +389,9 @@ async def screen_resumes(
             detail="Job description cannot be empty",
         )
 
-    # --------------------------------------------------
-    # 3. Parse JD
-    # --------------------------------------------------
-
     jd = parse_job_description(
         job_description_text
     )
-
-    # --------------------------------------------------
-    # 4. Process all resumes
-    # --------------------------------------------------
 
     resumes = []
 
@@ -340,7 +421,6 @@ async def screen_resumes(
             suffix=".pdf",
             delete=False,
         ) as temp_file:
-
             temp_file.write(contents)
             temp_path = Path(temp_file.name)
 
@@ -356,7 +436,6 @@ async def screen_resumes(
                 resume_text
             )
 
-            # Keep filename available for screening results
             resumes.append(
                 {
                     "filename": resume_file.filename,
@@ -369,28 +448,16 @@ async def screen_resumes(
                 missing_ok=True
             )
 
-    # --------------------------------------------------
-    # 5. Validate candidates
-    # --------------------------------------------------
-
     if not resumes:
         raise HTTPException(
             status_code=400,
             detail="No valid resumes were provided",
         )
 
-    # --------------------------------------------------
-    # 6. Screen candidates
-    # --------------------------------------------------
-
     results = screen_candidates(
         resumes,
         jd,
     )
-
-    # --------------------------------------------------
-    # 7. Return ranked results
-    # --------------------------------------------------
 
     return {
         "job_title": jd.title,
