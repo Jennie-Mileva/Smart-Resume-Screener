@@ -15,6 +15,7 @@ from backend.app.services.matcher import match_resume_to_job
 from backend.app.services.llm_matcher import (
     llm_match_resume_to_job,
 )
+from backend.app.services.screener import screen_candidates
 
 
 router = APIRouter(
@@ -99,18 +100,8 @@ async def match_resume(
     job_description_file: UploadFile = File(...),
 ):
     """
-    Match a resume PDF against a job-description text file.
-
-    resume_file:
-        Resume PDF.
-
-    job_description_file:
-        Plain-text JD file (.txt).
+    Match a single resume PDF against one job description.
     """
-
-    # --------------------------------------------------
-    # 1. Validate resume
-    # --------------------------------------------------
 
     if not resume_file.filename:
         raise HTTPException(
@@ -124,10 +115,6 @@ async def match_resume(
             detail="Resume must be a PDF file",
         )
 
-    # --------------------------------------------------
-    # 2. Validate JD file
-    # --------------------------------------------------
-
     if not job_description_file.filename:
         raise HTTPException(
             status_code=400,
@@ -139,10 +126,6 @@ async def match_resume(
             status_code=400,
             detail="Job description must be a .txt file",
         )
-
-    # --------------------------------------------------
-    # 3. Read resume PDF
-    # --------------------------------------------------
 
     resume_contents = await resume_file.read()
 
@@ -157,10 +140,6 @@ async def match_resume(
             status_code=400,
             detail="Resume file size must not exceed 5 MB",
         )
-
-    # --------------------------------------------------
-    # 4. Read JD text file
-    # --------------------------------------------------
 
     jd_contents = await job_description_file.read()
 
@@ -193,10 +172,6 @@ async def match_resume(
             detail="Job description cannot be empty",
         )
 
-    # --------------------------------------------------
-    # 5. Save resume temporarily
-    # --------------------------------------------------
-
     with tempfile.NamedTemporaryFile(
         suffix=".pdf",
         delete=False,
@@ -205,11 +180,6 @@ async def match_resume(
         temp_file_path = Path(temp_file.name)
 
     try:
-
-        # --------------------------------------------------
-        # 6. Extract resume text
-        # --------------------------------------------------
-
         resume_text = extract_text_from_pdf(
             str(temp_file_path)
         )
@@ -220,47 +190,23 @@ async def match_resume(
                 detail="Could not extract readable text from the PDF",
             )
 
-        # --------------------------------------------------
-        # 7. Parse resume
-        # --------------------------------------------------
-
-        resume = parse_resume(
-            resume_text
-        )
-
-        # --------------------------------------------------
-        # 8. Parse job description
-        # --------------------------------------------------
+        resume = parse_resume(resume_text)
 
         jd = parse_job_description(
             job_description_text
         )
-        print("\n===== JD TEXT RECEIVED =====")
-        print(job_description_text)
-        print("============================")
-
-        print("\n===== JD OBJECT =====")
-        print(jd)
-        print("=====================")
-        # --------------------------------------------------
-        # 9. Match resume against JD
-        # --------------------------------------------------
 
         result = match_resume_to_job(
             resume,
             jd,
         )
+
         llm_result = llm_match_resume_to_job(
             resume,
             jd,
         )
 
-        # --------------------------------------------------
-        # 10. Return result
-        # --------------------------------------------------
-
         response = result.model_dump()
-
         response["llm_match"] = llm_result
 
         return response
@@ -283,3 +229,171 @@ async def match_resume(
         temp_file_path.unlink(
             missing_ok=True
         )
+
+
+@router.post("/screen")
+async def screen_resumes(
+    resume_files: list[UploadFile] = File(...),
+    job_description_file: UploadFile = File(...),
+):
+    """
+    Screen multiple resume PDFs against one job description.
+
+    Candidates are parsed, matched using the LLM,
+    classified, and sorted by score.
+    """
+
+    # --------------------------------------------------
+    # 1. Validate resumes
+    # --------------------------------------------------
+
+    if not resume_files:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one resume is required",
+        )
+
+    # --------------------------------------------------
+    # 2. Validate JD
+    # --------------------------------------------------
+
+    if not job_description_file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No job description file was provided",
+        )
+
+    if not job_description_file.filename.lower().endswith(".txt"):
+        raise HTTPException(
+            status_code=400,
+            detail="Job description must be a .txt file",
+        )
+
+    jd_contents = await job_description_file.read()
+
+    if not jd_contents:
+        raise HTTPException(
+            status_code=400,
+            detail="The job description file is empty",
+        )
+
+    if len(jd_contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail="Job description file size must not exceed 5 MB",
+        )
+
+    try:
+        job_description_text = jd_contents.decode(
+            "utf-8"
+        ).strip()
+
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Job description must be a UTF-8 text file",
+        ) from exc
+
+    if not job_description_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Job description cannot be empty",
+        )
+
+    # --------------------------------------------------
+    # 3. Parse JD
+    # --------------------------------------------------
+
+    jd = parse_job_description(
+        job_description_text
+    )
+
+    # --------------------------------------------------
+    # 4. Process all resumes
+    # --------------------------------------------------
+
+    resumes = []
+
+    for resume_file in resume_files:
+
+        if not resume_file.filename:
+            continue
+
+        if not resume_file.filename.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{resume_file.filename} is not a PDF file",
+            )
+
+        contents = await resume_file.read()
+
+        if not contents:
+            continue
+
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{resume_file.filename} exceeds the 5 MB limit",
+            )
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".pdf",
+            delete=False,
+        ) as temp_file:
+
+            temp_file.write(contents)
+            temp_path = Path(temp_file.name)
+
+        try:
+            resume_text = extract_text_from_pdf(
+                str(temp_path)
+            )
+
+            if not resume_text:
+                continue
+
+            resume = parse_resume(
+                resume_text
+            )
+
+            # Keep filename available for screening results
+            resumes.append(
+                {
+                    "filename": resume_file.filename,
+                    "resume": resume,
+                }
+            )
+
+        finally:
+            temp_path.unlink(
+                missing_ok=True
+            )
+
+    # --------------------------------------------------
+    # 5. Validate candidates
+    # --------------------------------------------------
+
+    if not resumes:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid resumes were provided",
+        )
+
+    # --------------------------------------------------
+    # 6. Screen candidates
+    # --------------------------------------------------
+
+    results = screen_candidates(
+        resumes,
+        jd,
+    )
+
+    # --------------------------------------------------
+    # 7. Return ranked results
+    # --------------------------------------------------
+
+    return {
+        "job_title": jd.title,
+        "candidate_count": len(results),
+        "candidates": results,
+    }
