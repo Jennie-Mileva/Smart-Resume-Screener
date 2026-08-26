@@ -72,7 +72,7 @@ smart\_resume\_screener/
 
 ```mermaid
 flowchart TD
-    A\[Frontend Dashboard] --> B\[FastAPI API]
+    A[Frontend Dashboard] --> B[FastAPI API]
 
     B --> C[Resume Processing]
     B --> D[Job Description Processing]
