@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
@@ -7,9 +8,20 @@ from google import genai
 from backend.app.schemas.job_description import JobDescription
 from backend.app.schemas.resume import Resume
 
+
 load_dotenv()
 
+
+PROMPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "prompts"
+    / "resume_matching.txt"
+)
+
+
 def build_candidate_data(resume: Resume) -> dict:
+    """Convert a Resume model into data suitable for the LLM."""
+
     return {
         "name": resume.name,
         "skills": resume.skills,
@@ -43,6 +55,8 @@ def build_candidate_data(resume: Resume) -> dict:
 
 
 def build_job_data(job_description: JobDescription) -> dict:
+    """Convert a JobDescription model into data suitable for the LLM."""
+
     return {
         "title": job_description.title,
         "required_skills": job_description.required_skills,
@@ -57,10 +71,167 @@ def build_job_data(job_description: JobDescription) -> dict:
     }
 
 
+def validate_llm_result(result: dict) -> dict:
+    """
+    Validate and normalize the LLM matching response.
+
+    Ensures the response contains the expected fields,
+    has a valid score, and uses an allowed recommendation.
+    """
+
+    if not isinstance(result, dict):
+        raise ValueError(
+            "LLM response must be a JSON object"
+        )
+
+    required_fields = {
+        "score",
+        "recommendation",
+        "matched_skills",
+        "missing_skills",
+        "strengths",
+        "justification",
+    }
+
+    missing_fields = [
+        field
+        for field in required_fields
+        if field not in result
+    ]
+
+    if missing_fields:
+        raise ValueError(
+            "LLM response is missing fields: "
+            + ", ".join(missing_fields)
+        )
+
+    try:
+        score = float(result["score"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "LLM score must be a number"
+        ) from exc
+
+    if not 0 <= score <= 10:
+        raise ValueError(
+            "LLM score must be between 0 and 10"
+        )
+
+    allowed_recommendations = {
+        "Strong Shortlist",
+        "Shortlist",
+        "Maybe",
+        "Reject",
+    }
+
+    recommendation = result["recommendation"]
+
+    if recommendation not in allowed_recommendations:
+        raise ValueError(
+            "Invalid LLM recommendation"
+        )
+
+    for field in (
+        "matched_skills",
+        "missing_skills",
+        "strengths",
+    ):
+        if not isinstance(result[field], list):
+            raise ValueError(
+                f"LLM field '{field}' must be a list"
+            )
+
+    if not isinstance(
+        result["justification"],
+        str,
+    ):
+        raise ValueError(
+            "LLM justification must be a string"
+        )
+
+    result["score"] = round(score, 2)
+
+    return result
+
+
+def load_matching_prompt(
+    candidate: dict,
+    job: dict,
+) -> str:
+    """
+    Load the resume matching prompt from the external
+    prompt template and insert candidate/job data.
+    """
+
+    if not PROMPT_PATH.exists():
+        raise FileNotFoundError(
+            f"Matching prompt not found: {PROMPT_PATH}"
+        )
+
+    template = PROMPT_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    return template.format(
+        candidate_json=json.dumps(
+            candidate,
+            indent=2,
+        ),
+        job_json=json.dumps(
+            job,
+            indent=2,
+        ),
+    )
+
+
+def parse_llm_response(text: str) -> dict:
+    """
+    Parse the raw LLM response into a validated dictionary.
+
+    Handles responses wrapped in Markdown code fences.
+    """
+
+    if not text or not text.strip():
+        raise ValueError(
+            "LLM returned an empty response"
+        )
+
+    text = text.strip()
+
+    if text.startswith("```"):
+        lines = text.splitlines()
+
+        if lines and lines[0].strip().lower() in {
+            "```json",
+            "```",
+        }:
+            lines = lines[1:]
+
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+
+        text = "\n".join(lines).strip()
+
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "LLM returned invalid JSON"
+        ) from exc
+
+    return validate_llm_result(result)
+
+
 def llm_match_resume_to_job(
     resume: Resume,
     job_description: JobDescription,
 ) -> dict:
+    """
+    Evaluate a resume against a job description using Gemini.
+
+    The prompt is loaded from backend/prompts/resume_matching.txt.
+    """
+
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
@@ -68,104 +239,23 @@ def llm_match_resume_to_job(
             "GEMINI_API_KEY is not configured"
         )
 
-    client = genai.Client(api_key=api_key)
-
     candidate = build_candidate_data(resume)
     job = build_job_data(job_description)
 
-    prompt = f"""
-You are an expert technical recruiter.
+    prompt = load_matching_prompt(
+        candidate,
+        job,
+    )
 
-Evaluate the candidate against the job description.
-
-CANDIDATE:
-{json.dumps(candidate, indent=2)}
-
-JOB DESCRIPTION:
-{json.dumps(job, indent=2)}
-
-SCORING RUBRIC:
-
-Calculate four separate category scores from 0 to 10.
-
-1. SKILLS — 40%
-Compare the candidate's skills with the required and preferred skills.
-Required skills are more important than preferred skills.
-
-2. EXPERIENCE — 30%
-Compare the candidate's actual experience with the job's experience requirements.
-Do not assume experience that is not explicitly present.
-
-3. EDUCATION — 15%
-Compare the candidate's education with the stated education requirements.
-Do not assume qualifications that are not provided.
-
-4. RESPONSIBILITIES / DOMAIN ALIGNMENT — 15%
-Compare the candidate's experience and projects with the responsibilities
-and technical domain of the job.
-Only use evidence present in the supplied candidate data.
-
-Calculate the final score using:
-
-final_score =
-    (skills_score * 0.40) +
-    (experience_score * 0.30) +
-    (education_score * 0.15) +
-    (responsibilities_score * 0.15)
-
-The final score must be between 0 and 10.
-
-Score guidance:
-
-0-3:
-Very poor match. Major required qualifications are missing.
-
-4-5:
-Some relevant qualifications, but significant gaps exist.
-
-6-7:
-Good match. A substantial portion of the important requirements is satisfied.
-
-8-9:
-Strong match. Most important requirements are satisfied with relevant evidence.
-
-10:
-Exceptional match. Essentially all important requirements are satisfied.
-
-IMPORTANT:
-- Do not invent qualifications, skills, experience, education, projects, or responsibilities.
-- Base every conclusion only on the supplied candidate and job data.
-- Required skills must not be treated as equivalent to preferred skills.
-- Missing information must not be treated as evidence that the candidate has the qualification.
-
-
-{{
-  "score": 0.0,
-  "recommendation": "Shortlist",
-  "matched_skills": [],
-  "missing_skills": [],
-  "strengths": [],
-  "justification": ""
-}}
-
-The score must be between 0 and 10.
-
-Recommendation must be one of:
-"Strong Shortlist"
-"Shortlist"
-"Maybe"
-"Reject"
-"""
+    client = genai.Client(
+        api_key=api_key
+    )
 
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=prompt,
     )
 
-    text = response.text.strip()
-
-    if text.startswith("```"):
-        text = text.replace("```json", "", 1)
-        text = text.replace("```", "", 1)
-        text = text.strip()
-    return json.loads(text)
+    return parse_llm_response(
+        response.text
+    )
