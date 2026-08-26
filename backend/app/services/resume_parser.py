@@ -456,18 +456,359 @@ def parse_projects(section_text: str) -> List[Project]:
 
 def parse_experience(section_text: str) -> List[Experience]:
     """
-    Basic experience parser.
+    Parse work experience from PDF-extracted resume text.
 
-    Experience parsing will be expanded when we introduce
-    JD-aware matching and support for more resume formats.
+    Supports:
+    - company + location + company description + role + date
+    - role + date
+    - dates split across PDF lines
+    - bullet-point descriptions
+    - previous-experience sections
     """
 
     if not section_text:
         return []
 
-    return []
+    lines = [
+        line.strip()
+        for line in section_text.splitlines()
+        if line.strip()
+    ]
 
+    # Remove PDF bullet-only lines and normalize bullets.
+    cleaned_lines = []
 
+    for line in lines:
+        line = re.sub(
+            r"^[●•ΓÇó]\s*",
+            "",
+            line,
+        ).strip()
+
+        if line:
+            cleaned_lines.append(line)
+
+    lines = cleaned_lines
+
+    # Normal date range:
+    # 01/2022 – Present
+    # 10/2019 – 12/2021
+    date_pattern = re.compile(
+        r"^\s*"
+        r"(?P<start>(?:\d{1,2}/)?(?:19|20)\d{2})"
+        r"\s*[-–—]\s*"
+        r"(?P<end>(?:\d{1,2}/)?(?:19|20)\d{2}|Present)"
+        r"\s*$",
+        re.IGNORECASE,
+    )
+
+    # Split date:
+    # 01/2016
+    # – 05/2017
+    split_date_start = re.compile(
+        r"^\s*(?:\d{1,2}/)?(?:19|20)\d{2}\s*$"
+    )
+
+    split_date_end = re.compile(
+        r"^\s*[-–—]\s*"
+        r"(?:\d{1,2}/)?(?:19|20)\d{2}"
+        r"\s*$"
+    )
+
+    # First convert split dates into one line.
+    normalized_lines = []
+
+    i = 0
+
+    while i < len(lines):
+
+        if (
+            split_date_start.match(lines[i])
+            and i + 1 < len(lines)
+            and split_date_end.match(lines[i + 1])
+        ):
+            normalized_lines.append(
+                f"{lines[i]} {lines[i + 1]}"
+            )
+
+            i += 2
+            continue
+
+        normalized_lines.append(lines[i])
+        i += 1
+
+    lines = normalized_lines
+
+    # Find all date positions.
+    date_positions = []
+
+    for index, line in enumerate(lines):
+
+        match = date_pattern.match(line)
+
+        if match:
+            date_positions.append(
+                (
+                    index,
+                    match.group("start"),
+                    match.group("end"),
+                )
+            )
+
+    experiences = []
+
+    # Words that strongly indicate a company description.
+    description_indicators = (
+        "startup",
+        "company",
+        "recruitment",
+        "employer",
+        "saas",
+        "users",
+        "listed",
+        "revenue",
+        "training",
+        "membership",
+        "platform",
+        "software",
+        "technology",
+        "technologies",
+    )
+
+    # Words that indicate a location.
+    location_pattern = re.compile(
+        r",\s*(?:United Kingdom|UK|USA|US|India|"
+        r"Canada|Australia|Germany|France|Spain|"
+        r"New York|London|California)",
+        re.IGNORECASE,
+    )
+
+    for position_index, (
+        date_index,
+        start_date,
+        end_date,
+    ) in enumerate(date_positions):
+
+        # Everything before this date.
+        previous_start = (
+            date_positions[position_index - 1][0] + 1
+            if position_index > 0
+            else 0
+        )
+
+        block_before_date = lines[
+            previous_start:date_index
+        ]
+
+        if not block_before_date:
+            continue
+
+        # --------------------------------------------------
+        # DETERMINE ROLE AND COMPANY
+        # --------------------------------------------------
+
+        role = block_before_date[-1]
+        company = None
+
+        # Previous-experience format:
+        #
+        # Coder,
+        # ABC Company, London, UK
+        # 06/2017 – 10/2018
+        #
+        # Ethical Hacker,
+        # XYZ Company, New York, USA
+        # 01/2016 – 05/2017
+        #
+        # In this format:
+        #   block_before_date[-2] = role
+        #   block_before_date[-1] = company + location
+
+        if (
+            len(block_before_date) >= 2
+            and "," in block_before_date[-1]
+        ):
+            possible_role = block_before_date[-2].strip(
+                " ,-"
+            )
+
+            possible_company = block_before_date[-1].strip(
+                " ,-"
+            )
+
+            if (
+                possible_role
+                and possible_company
+            ):
+                role = possible_role
+                company = possible_company
+
+        # --------------------------------------------------
+        # NORMAL EXPERIENCE FORMAT
+        # --------------------------------------------------
+
+        if company is None:
+
+            # The role is normally immediately before
+            # the date.
+            role = block_before_date[-1]
+
+            # Search backwards for the company.
+            for candidate in reversed(
+                block_before_date[:-1]
+            ):
+
+                candidate_clean = candidate.strip(
+                    " ,-"
+                )
+
+                lower_candidate = (
+                    candidate_clean.lower()
+                )
+
+                # Ignore company-description lines.
+                if any(
+                    indicator in lower_candidate
+                    for indicator in description_indicators
+                ):
+                    continue
+
+                # Ignore location-only lines.
+                if (
+                    location_pattern.search(
+                        candidate_clean
+                    )
+                    and len(
+                        candidate_clean.split()
+                    ) <= 6
+                ):
+                    continue
+
+                # Ignore separator lines.
+                if set(candidate_clean) <= {
+                    "_",
+                    "-",
+                    "–",
+                    "—",
+                }:
+                    continue
+
+                company = candidate_clean
+                break
+
+        if not company:
+            company = "Unknown"
+
+        # --------------------------------------------------
+        # DESCRIPTION
+        # --------------------------------------------------
+
+        next_date_index = (
+            date_positions[position_index + 1][0]
+            if position_index + 1 < len(date_positions)
+            else len(lines)
+        )
+
+        description_lines = lines[
+            date_index + 1:next_date_index
+        ]
+
+        # Stop description when the next company block
+        # starts.
+        if description_lines:
+
+            stop_index = len(description_lines)
+
+            for j in range(
+                len(description_lines) - 1
+            ):
+
+                current = description_lines[j]
+                following = description_lines[j + 1]
+
+                # A location line often contains a comma.
+                looks_like_location = (
+                    "," in following
+                    and len(following.split()) <= 8
+                )
+
+                # Avoid treating normal bullet/description
+                # text as a company name.
+                looks_like_company = (
+                    not current.endswith(".")
+                    and not current.startswith(
+                        (
+                            "Created ",
+                            "Developed ",
+                            "Supervised ",
+                            "Designed ",
+                            "Implemented ",
+                            "Launched ",
+                            "Responded ",
+                            "Provided ",
+                            "Discovered ",
+                            "Answered ",
+                        )
+                    )
+                )
+
+                if (
+                    looks_like_company
+                    and looks_like_location
+                ):
+                    stop_index = j
+                    break
+
+            description_lines = description_lines[
+                :stop_index
+            ]
+
+        description_parts = []
+
+        for line in description_lines:
+
+            upper_line = line.upper()
+
+            # Skip section/contact headings.
+            if upper_line in {
+                "PREVIOUS EXPERIENCE",
+                "CONTACT",
+                "SKILLS",
+                "EDUCATION",
+                "OTHER",
+            }:
+                continue
+
+            # Skip separator lines.
+            if set(line) <= {
+                "_",
+                "-",
+                "–",
+                "—",
+            }:
+                continue
+
+            description_parts.append(line)
+
+        description = " ".join(
+            description_parts
+        ).strip()
+
+        experiences.append(
+            Experience(
+                company=company,
+                role=role,
+                start_date=start_date,
+                end_date=end_date,
+                description=(
+                    description
+                    if description
+                    else None
+                ),
+            )
+        )
+
+    return experiences
 def parse_certifications(section_text: str) -> List[str]:
     """Extract certifications, including pipe-separated entries."""
 

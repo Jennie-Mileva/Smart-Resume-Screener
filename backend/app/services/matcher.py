@@ -655,41 +655,40 @@ def match_projects(
 # OVERALL SCORE
 # ============================================================
 
-# ============================================================
-# OVERALL SCORE
-# ============================================================
-
 def calculate_overall_score(
     skill_match: SkillMatchResult,
+    experience_match: ExperienceMatchResult,
+    education_match: EducationMatchResult,
+    project_match: ProjectMatchResult,
 ) -> float:
     """
     Calculate the overall resume-to-JD score.
 
-    Required skills : 80%
-    Preferred skills: 20%
+    Weighting:
+        Required skills : 50%
+        Preferred skills: 10%
+        Experience      : 20%
+        Education       : 10%
+        Projects        : 10%
 
-    Experience, education, and projects are calculated
-    separately and are not included in the overall score yet.
+    Total: 100%
     """
 
-    required_score = (
-        skill_match.required_match_percentage
-    )
-
-    preferred_score = (
-        skill_match.preferred_match_percentage
-    )
+    required_score = skill_match.required_match_percentage
+    preferred_score = skill_match.preferred_match_percentage
+    experience_score = experience_match.match_percentage
+    education_score = education_match.match_percentage
+    project_score = project_match.match_percentage
 
     score = (
-        required_score * 0.80
-        + preferred_score * 0.20
+        required_score * 0.50
+        + preferred_score * 0.10
+        + experience_score * 0.20
+        + education_score * 0.10
+        + project_score * 0.10
     )
 
-    return round(
-        score,
-        2,
-    )
-
+    return round(score, 2)
 # ============================================================
 # COMPLETE MATCH
 # ============================================================
@@ -723,7 +722,10 @@ def match_resume_to_job(
     )
 
     overall_score = calculate_overall_score(
-        skill_match
+        skill_match,
+        experience_match,
+        education_match,
+        project_match,
     )
 
     return MatchResult(

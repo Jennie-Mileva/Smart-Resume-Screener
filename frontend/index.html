@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Resume Screener</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <header class="header">
+        <div class="container">
+            <h1>SMART RESUME SCREENER</h1>
+            <p>AI-powered candidate screening</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <section class="card">
+            <h2>Screen Candidates</h2>
+
+            <form id="screenForm">
+
+                <div class="form-group">
+                    <label for="jobTitle">Job Title</label>
+                    <input
+                        type="text"
+                        id="jobTitle"
+                        placeholder="e.g. Python Backend Developer"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="jobDescription">Job Description</label>
+                    <textarea
+                        id="jobDescription"
+                        rows="10"
+                        placeholder="Paste the job description here..."
+                        required
+                    ></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="resumeFiles">Upload Resumes</label>
+                    <input
+                        type="file"
+                        id="resumeFiles"
+                        accept=".pdf"
+                        multiple
+                        required
+                    >
+                    <small id="fileInfo">No files selected</small>
+                </div>
+
+                <button type="submit" id="screenButton">
+                    SCREEN CANDIDATES
+                </button>
+
+            </form>
+
+            <div id="status" class="status hidden"></div>
+        </section>
+
+        <section id="resultsSection" class="results-section hidden">
+
+            <div class="results-header">
+                <div>
+                    <h2>Screening Results</h2>
+                    <p id="resultsSummary"></p>
+                </div>
+            </div>
+
+            <div id="results"></div>
+
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Smart Resume Screener &copy; 2026 Jennie Mileva. All rights reserved.</p>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

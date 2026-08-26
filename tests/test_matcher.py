@@ -64,7 +64,7 @@ def test_match_resume_to_job():
 
     assert result.skill_match.preferred_match_percentage == 66.67
 
-    assert result.overall_score == 29.33
+    assert result.overall_score == 46.67
 
 
 def test_experience_matching():
