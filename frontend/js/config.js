@@ -1,0 +1,1 @@
+const API_BASE_URL = "https://smart-resume-screener-api-xisb.onrender.com";

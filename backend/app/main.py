@@ -22,6 +22,8 @@ frontend_url = os.getenv(
 allowed_origins = [
     "http://127.0.0.1:5505",
     "http://localhost:5505",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
 ]
 
 if frontend_url not in allowed_origins:
