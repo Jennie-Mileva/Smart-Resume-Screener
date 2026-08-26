@@ -74,24 +74,24 @@ smart\_resume\_screener/
 flowchart TD
     A\[Frontend Dashboard] --> B\[FastAPI API]
 
-    B --> C\[Resume Processing]
-    B --> D\[Job Description Processing]
+    B --> C[Resume Processing]
+    B --> D[Job Description Processing]
 
-    C --> E\[PDF Text Extraction]
-    E --> F\[Resume Parser]
+    C --> E[PDF Text Extraction]
+    E --> F[Resume Parser]
 
-    D --> G\[Job Description Parser]
+    D --> G[Job Description Parser]
 
-    F --> H\[Matching Engine]
+    F --> H[Matching Engine]
     G --> H
 
-    H --> I\[Deterministic Matcher]
-    H --> J\[LLM Matcher]
+    H --> I[Deterministic Matcher]
+    H --> J[LLM Matcher]
 
-    I --> K\[Match Result]
+    I --> K[Match Result]
     J --> K
 
-    B --> L\[SQLite Database]
+    B --> L[SQLite Database]
 ```
 
 ## Setup
