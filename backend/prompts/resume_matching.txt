@@ -67,14 +67,14 @@ IMPORTANT:
 
 Return exactly this JSON structure:
 
-{
+{{
   "score": 0.0,
   "recommendation": "Reject",
   "matched_skills": [],
   "missing_skills": [],
   "strengths": [],
   "justification": ""
-}
+}}
 
 Recommendation must be one of:
 

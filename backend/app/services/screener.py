@@ -106,48 +106,34 @@ def screen_candidates(
 
             # The deterministic matcher uses a score
             # from 0-100, while screening uses 0-10.
-            raw_score = float(
-                getattr(
-                    match_result,
-                    "score",
-                    0,
+                        # The deterministic matcher's overall_score is
+            # 0-100, while screening uses a 0-10 scale.
+            raw_score = match_result.overall_score
+            score = raw_score / 10
+
+            recommendation = None
+
+            matched_skills = (
+                match_result.skill_match.matched_required_skills
+                + match_result.skill_match.matched_preferred_skills
+            )
+
+            missing_skills = (
+                match_result.skill_match.missing_required_skills
+                + match_result.skill_match.missing_preferred_skills
+            )
+
+            strengths = []
+
+            justification = (
+                "AI scoring was unavailable, so this score is "
+                "from automated keyword matching. "
+                + " ".join(
+                    match_result.experience_match.details
+                    + match_result.education_match.details
+                    + match_result.project_match.details
                 )
-            )
-
-            if raw_score > 10:
-                score = raw_score / 10
-            else:
-                score = raw_score
-
-            recommendation = getattr(
-                match_result,
-                "recommendation",
-                None,
-            )
-
-            matched_skills = getattr(
-                match_result,
-                "matched_skills",
-                [],
-            )
-
-            missing_skills = getattr(
-                match_result,
-                "missing_skills",
-                [],
-            )
-
-            strengths = getattr(
-                match_result,
-                "strengths",
-                [],
-            )
-
-            justification = getattr(
-                match_result,
-                "justification",
-                "",
-            )
+            ).strip()
 
         # --------------------------------------------------
         # 3. Normalize values

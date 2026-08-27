@@ -1,3 +1,4 @@
+const API_BASE_URL = "https://smart-resume-screener-api-xisb.onrender.com";
 
 const form = document.getElementById("screenForm");
 const jobTitleInput = document.getElementById("jobTitle");
