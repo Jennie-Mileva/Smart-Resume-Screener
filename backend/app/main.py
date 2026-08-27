@@ -24,6 +24,7 @@ allowed_origins = [
     "http://localhost:5505",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "https://smart-resume-screener-frontend-h9cq.onrender.com",
 ]
 
 if frontend_url not in allowed_origins:
