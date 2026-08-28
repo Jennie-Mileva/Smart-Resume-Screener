@@ -287,11 +287,9 @@ Then open `http://127.0.0.1:5505`. Update `API_BASE_URL` in `frontend/js/app.js`
 
 ## Screenshots
 
-_Add screenshots to a `screenshots/` folder in the repo and reference them below, for example:_
-
 ```markdown
 ### Dashboard
-![Dashboard](screenshots/1-dashboard.png)
+[Dashboard](screenshots/1-dashboard.png)
 
 ### Resume Upload
 ![Resume Upload](screenshots/2-resume-upload.png)
