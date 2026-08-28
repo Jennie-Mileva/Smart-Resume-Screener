@@ -287,7 +287,7 @@ Then open `http://127.0.0.1:5505`. Update `API_BASE_URL` in `frontend/js/app.js`
 
 ## Screenshots
 
-```markdown
+
 ### Dashboard
 ![Dashboard](./screenshots/1-dashboard.png)
 
@@ -305,7 +305,7 @@ Then open `http://127.0.0.1:5505`. Update `API_BASE_URL` in `frontend/js/app.js`
 
 ### Swagger API Docs
 ![Swagger Docs](screenshots/6-swagger.png)
-```
+
 
 ## Testing
 
