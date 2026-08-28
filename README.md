@@ -289,7 +289,7 @@ Then open `http://127.0.0.1:5505`. Update `API_BASE_URL` in `frontend/js/app.js`
 
 ```markdown
 ### Dashboard
-![Dashboard](screenshots/1-dashboard.png)
+![Dashboard](./screenshots/1-dashboard.png)
 
 ### Resume Upload
 ![Resume Upload](screenshots/2-resume-upload.png)
