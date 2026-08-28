@@ -283,7 +283,7 @@ Then open `http://127.0.0.1:5505`. Update `API_BASE_URL` in `frontend/js/app.js`
 
 > Note: hosted on Render's free tier, so the backend may take 30–50 seconds to respond on the first request after a period of inactivity (cold start).
 
-**Demo video:** _[add your video link here once recorded/uploaded]_
+**Demo video:** https://youtu.be/vOy1b1pedo8
 
 ## Screenshots
 
